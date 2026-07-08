@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment
+.env
+
+# Data / artifacts
+*.db
+data/generated/
+logs/
+
+# Node (frontend, later stage)
+node_modules/
+.next/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store

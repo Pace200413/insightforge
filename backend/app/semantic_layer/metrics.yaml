@@ -1,0 +1,51 @@
+# Approved business metric definitions.
+# The AI must select from these -- it may never invent its own definition
+# of a business term. Loaded and enforced from Stage 4 onward.
+#
+# `sql_expression` fragments reference the canonical schema created in Stage 2.
+
+metrics:
+  gross_revenue:
+    label: "Gross Revenue"
+    description: "Total value of all placed orders before refunds, discounts, and cancellations."
+    grain: order
+    sql_expression: "SUM(order_items.quantity * order_items.unit_price)"
+    filters: []
+
+  net_revenue:
+    label: "Net Revenue"
+    description: "Gross order value minus refunds, discounts, and cancelled transactions."
+    grain: order
+    sql_expression: "SUM(order_items.quantity * order_items.unit_price) - SUM(COALESCE(refunds.amount, 0)) - SUM(COALESCE(orders.discount_amount, 0))"
+    filters:
+      - "orders.status != 'cancelled'"
+
+  active_customers:
+    label: "Active Customers"
+    description: "Distinct customers with at least one completed order in the period."
+    grain: customer
+    sql_expression: "COUNT(DISTINCT orders.customer_id)"
+    filters:
+      - "orders.status = 'completed'"
+
+  completed_orders:
+    label: "Completed Orders"
+    description: "Orders with status 'completed' in the period."
+    grain: order
+    sql_expression: "COUNT(*)"
+    filters:
+      - "orders.status = 'completed'"
+
+  average_order_value:
+    label: "Average Order Value (AOV)"
+    description: "Net revenue divided by completed orders."
+    grain: order
+    derived_from: [net_revenue, completed_orders]
+    formula: "net_revenue / completed_orders"
+
+  refund_rate:
+    label: "Refund Rate"
+    description: "Refunded amount as a share of gross revenue."
+    grain: order
+    derived_from: [gross_revenue]
+    formula: "total_refunds / gross_revenue"

@@ -1,0 +1,132 @@
+# =============================================================================
+# GROUND-TRUTH ANOMALY MANIFEST
+# =============================================================================
+# Every hidden business event and data-quality problem injected into the
+# synthetic dataset is declared here. This file has two jobs:
+#
+#   1. The data generator reads it to apply the anomalies.
+#   2. The evaluation framework (Stage 9) reads it as the answer key:
+#      when the AI investigates "why did revenue drop in June 2026?",
+#      its conclusions are scored against these declared causes.
+#
+# `multiplier` semantics: orders matching the dimension filters within the
+# period are kept with probability = multiplier (volume anomalies), or the
+# listed rate/factor is applied (rate anomalies).
+#
+# Canonical demo question: "Why did revenue drop last month?" (June 2026)
+# Expected top finding: enterprise segment volume collapse (largest
+# contribution), compounded by an EMEA slowdown and an Electronics
+# refund spike.
+# =============================================================================
+
+dataset:
+  start_date: 2025-01-01
+  end_date: 2026-06-30
+  random_seed: 42
+  base_orders_per_day: 220
+
+anomalies:
+  - id: enterprise_volume_drop
+    type: volume
+    description: >
+      Enterprise customers sharply reduce order volume in June 2026.
+      This is the PRIMARY cause of the June revenue decline.
+    period: {start: 2026-06-01, end: 2026-06-30}
+    dimensions: {segment: enterprise}
+    multiplier: 0.45   # enterprise order volume reduced to 45% of baseline
+    expected_findings:
+      - "Enterprise order volume in June 2026 is roughly 55% below baseline."
+      - "Enterprise is the largest contributor to the total June revenue decline
+         (enterprise orders are high-value, so the revenue impact exceeds the volume impact share)."
+
+  - id: emea_slowdown
+    type: volume
+    description: EMEA region orders decline across all segments in June 2026.
+    period: {start: 2026-06-01, end: 2026-06-30}
+    dimensions: {region: EMEA}
+    multiplier: 0.75   # EMEA volume reduced to 75% of baseline
+    expected_findings:
+      - "EMEA order volume in June 2026 is roughly 25% below baseline."
+      - "Secondary contributor to the June decline; smaller than the enterprise effect."
+    note: >
+      Overlaps with enterprise_volume_drop: EMEA enterprise orders receive
+      BOTH multipliers (0.45 * 0.75). Evaluation should score direction and
+      approximate magnitude, not exact figures.
+
+  - id: electronics_refund_spike
+    type: refund_rate
+    description: >
+      Refund rate for orders containing Electronics products jumps in June
+      2026 (simulating a defective product batch).
+    period: {start: 2026-06-01, end: 2026-06-30}
+    dimensions: {category: Electronics}
+    baseline_rate: 0.025
+    anomaly_rate: 0.12
+    expected_findings:
+      - "Electronics refund rate in June 2026 is ~4-5x the historical baseline."
+      - "Reduces June NET revenue (net revenue subtracts refunds; gross revenue is unaffected)."
+
+  - id: apparel_price_increase
+    type: price_change
+    description: >
+      Apparel prices increase 15% from April 2026 onward. Raises apparel AOV;
+      also means products.price (current) no longer matches historical
+      order_items.unit_price before April.
+    period: {start: 2026-04-01, end: 2026-06-30}
+    dimensions: {category: Apparel}
+    price_factor: 1.15
+    expected_findings:
+      - "Apparel average unit price rises ~15% starting April 2026."
+      - "Queries computing historical revenue from products.price instead of
+         order_items.unit_price are WRONG -- a trap the validator should catch."
+
+  - id: duplicate_payments
+    type: data_quality
+    description: >
+      ~1.5% of completed orders in May-June 2026 have a duplicated payment
+      row (simulating a payment-processor double-write bug).
+    period: {start: 2026-05-01, end: 2026-06-30}
+    duplicate_fraction: 0.015
+    expected_findings:
+      - "SUM(payments.amount) exceeds order-item revenue for May-June 2026."
+      - "Revenue must be computed from order_items, not payments. Joining
+         orders to payments without deduplication inflates results -- the
+         validator's duplicate-join check should flag this."
+
+  - id: failed_summer_campaign
+    type: campaign
+    description: >
+      'Summer Splash 2026' campaign (June 2026): high spend, near-zero
+      attributed orders.
+    period: {start: 2026-06-01, end: 2026-06-30}
+    campaign_name: "Summer Splash 2026"
+    spend: 85000
+    attribution_rate: 0.002   # vs ~0.20 for normal campaigns
+    expected_findings:
+      - "Summer Splash 2026 spend is high while attributed orders are near zero,
+         giving an extreme cost-per-order versus other campaigns."
+
+seasonality:
+  # Multiplicative annual pattern (applied by month). Nov-Dec holiday peak,
+  # summer dip. The AI must distinguish these NORMAL patterns from anomalies.
+  monthly_factors:
+    1: 0.90   # January post-holiday dip
+    2: 0.92
+    3: 1.00
+    4: 1.02
+    5: 1.05
+    6: 1.00
+    7: 0.95
+    8: 0.93
+    9: 1.00
+    10: 1.08
+    11: 1.30  # Black Friday
+    12: 1.35  # Holidays
+  weekday_factors:   # Monday=0 ... Sunday=6
+    0: 1.05
+    1: 1.10
+    2: 1.10
+    3: 1.05
+    4: 1.00
+    5: 0.80
+    6: 0.75

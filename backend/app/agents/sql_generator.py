@@ -95,6 +95,34 @@ after. The first character of your response must be 'W', 'S', or '(' (WITH/SELEC
 6. Do NOT reference the `email` column (blocked by security policy).
 7. The query MUST be a SELECT. No INSERT, UPDATE, DELETE, DROP, TRUNCATE.
 8. Include a LIMIT clause (max 10000 rows for detail queries; aggregations don't need it).
+9. NEVER reference a SELECT-list alias in the same SELECT's expressions or WHERE.
+   Aliases like `revenue_change` only exist AFTER the SELECT. To use a computed
+   value in another expression, repeat the full expression or use a CTE/subquery.
+10. When joining multiple tables that share column names (e.g. order_id), ALWAYS
+    qualify every column with its table alias to avoid "ambiguous column" errors.
+11. NEVER nest aggregates like SUM(COUNT(...)). Compute the inner aggregate in a
+    subquery/CTE first, then aggregate the result in the outer query.
+12. categories has NO category_id column -- it is `categories.id`. Join
+    products.category_id -> categories.id.
+
+## WORKED EXAMPLE (period-vs-period revenue by segment, the correct pattern)
+WITH order_revenue AS (
+    SELECT oi.order_id, SUM(oi.quantity * oi.unit_price) AS gross
+    FROM order_items oi
+    GROUP BY oi.order_id
+)
+SELECT c.segment,
+       SUM(CASE WHEN o.order_date >= '2026-06-01' AND o.order_date < '2026-07-01'
+                THEN orr.gross ELSE 0 END) AS jun_revenue,
+       SUM(CASE WHEN o.order_date >= '2026-05-01' AND o.order_date < '2026-06-01'
+                THEN orr.gross ELSE 0 END) AS may_revenue
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+JOIN order_revenue orr ON orr.order_id = o.id
+WHERE o.status = 'completed'
+  AND o.order_date >= '2026-05-01' AND o.order_date < '2026-07-01'
+GROUP BY c.segment
+ORDER BY may_revenue - jun_revenue DESC
 """
 
 
@@ -108,8 +136,7 @@ class SQLGenerator:
     MAX_TOKENS = 2048
 
     def __init__(self, client: LLMClient | None = None) -> None:
-        from app.core.llm_factory import get_completion_client
-        self._client = client or get_completion_client()
+        self._client = client or AnthropicLLMClient()
 
     def generate(
         self,

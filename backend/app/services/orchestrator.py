@@ -43,8 +43,21 @@ from app.schemas.investigation import (
 from app.security.audit_log import audit_log
 from app.security.sql_firewall import SQLFirewall
 from app.services import result_validator
+from app.observability.usage_tracker import estimate_tokens, usage_tracker
 
 log = get_logger("orchestrator")
+
+
+def _track_usage(session_id: str, agent: str, prompt: str, output: str, t_start: float) -> None:
+    """Record an LLM call's estimated token usage and latency."""
+    latency_ms = int((time.monotonic() - t_start) * 1000)
+    usage_tracker.record(
+        session_id=session_id,
+        agent=agent,
+        input_tokens=estimate_tokens(prompt),
+        output_tokens=estimate_tokens(output),
+        latency_ms=latency_ms,
+    )
 
 # Keywords per step_id used for schema search
 _STEP_KEYWORDS: dict[str, list[str]] = {
@@ -98,9 +111,12 @@ class InvestigationOrchestrator:
         log.info("investigation_start", session_id=session_id, question=question[:120])
 
         # ── 1. Interpret ──────────────────────────────────────────────
+        t_interp = time.monotonic()
         interpretation = self._interpreter.interpret(
             question, reference_date=reference_date
         )
+        _track_usage(session_id, "interpreter", question,
+                     interpretation.model_dump_json(), t_interp)
         log.info(
             "interpretation_done",
             session_id=session_id,
@@ -129,7 +145,11 @@ class InvestigationOrchestrator:
         # ── 5. Insight ────────────────────────────────────────────────
         insight = None
         try:
+            t_insight = time.monotonic()
             insight = self._insight.generate(interpretation, step_results)
+            _track_usage(session_id, "insight",
+                         " ".join(s.description for s in step_results),
+                         insight.model_dump_json(), t_insight)
         except Exception as exc:
             log.error("insight_generation_failed", error=str(exc))
 
@@ -178,11 +198,13 @@ class InvestigationOrchestrator:
 
         # Generate SQL
         try:
+            t_sql = time.monotonic()
             sql = self._generator.generate(
                 step.description,
                 relevant_tables=tables,
                 metric_definition=interpretation.metric_definition,
             )
+            _track_usage(session_id, "sql_generator", step.description, sql, t_sql)
         except Exception as exc:
             log.error("sql_generation_failed", step=step.step_id, error=str(exc))
             return StepResult(

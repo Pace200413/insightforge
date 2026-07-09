@@ -1,41 +1,24 @@
-"""Investigation endpoints.
-
-POST /investigate/interpret
-    Parses a business question into a structured QuestionInterpretation.
-    Fast (<2s), safe to call without a database (falls back to a schema
-    summary stub when the DB is unavailable).
-
-GET  /investigate/schema
-    Returns the database schema summary (useful for debugging and the frontend
-    investigation timeline in Stage 10).
-"""
-
+"""Investigation endpoints."""
 from __future__ import annotations
-
 import uuid
 from datetime import date
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.agents.question_interpreter import QuestionInterpreter
 from app.core.database import get_engine, get_session
 from app.core.logging import get_logger
 from app.db.schema_inspector import SchemaInspector
-from app.schemas.investigation import InvestigationState, QuestionInterpretation
+from app.schemas.investigation import InvestigationResponse, QuestionInterpretation
+from app.services.orchestrator import InvestigationOrchestrator
 
 router = APIRouter(prefix="/investigate", tags=["investigate"])
 log = get_logger("api.investigate")
 
-# ---------------------------------------------------------------------------
-# Request / response models
-# ---------------------------------------------------------------------------
-
 
 class InterpretRequest(BaseModel):
     question: str
-    reference_date: date | None = None   # for testing; defaults to today
+    reference_date: date | None = None
 
 
 class InterpretResponse(BaseModel):
@@ -44,21 +27,16 @@ class InterpretResponse(BaseModel):
     schema_tables_used: int
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
+class RunRequest(BaseModel):
+    question: str
+    reference_date: date | None = None
+    session_id: str | None = None
 
 
 @router.post("/interpret", response_model=InterpretResponse)
-async def interpret_question(
-    body: InterpretRequest,
-    db: AsyncSession = Depends(get_session),
-) -> InterpretResponse:
-    """Stage 3: parse the business question into a structured investigation spec."""
+async def interpret_question(body: InterpretRequest) -> InterpretResponse:
     session_id = str(uuid.uuid4())
     log.info("interpret_request", session_id=session_id, question=body.question[:120])
-
-    # Build schema summary for the LLM prompt
     try:
         inspector = await SchemaInspector.build(get_engine())
         schema_summary = inspector.full_summary()
@@ -67,9 +45,7 @@ async def interpret_question(
         log.warning("schema_build_failed", error=str(exc))
         schema_summary = "(schema unavailable)"
         schema_tables_used = 0
-
     interpreter = QuestionInterpreter()
-
     try:
         interpretation = interpreter.interpret(
             body.question,
@@ -81,14 +57,6 @@ async def interpret_question(
     except Exception as exc:
         log.error("interpreter_error", error=str(exc))
         raise HTTPException(status_code=500, detail="Interpreter error. Check ANTHROPIC_API_KEY.") from exc
-
-    log.info(
-        "interpret_complete",
-        session_id=session_id,
-        question_type=interpretation.question_type,
-        metric=interpretation.primary_metric_key,
-        confidence=interpretation.confidence,
-    )
     return InterpretResponse(
         session_id=session_id,
         interpretation=interpretation,
@@ -96,9 +64,24 @@ async def interpret_question(
     )
 
 
+@router.post("/run", response_model=InvestigationResponse)
+async def run_investigation(body: RunRequest) -> InvestigationResponse:
+    """Full end-to-end investigation: interpret -> plan -> SQL -> validate -> insight."""
+    log.info("run_request", question=body.question[:120])
+    orchestrator = InvestigationOrchestrator(engine=get_engine())
+    try:
+        return await orchestrator.run(
+            body.question,
+            reference_date=body.reference_date,
+            session_id=body.session_id,
+        )
+    except Exception as exc:
+        log.error("investigation_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/schema")
-async def get_schema(db: AsyncSession = Depends(get_session)) -> dict:
-    """Return the full schema summary (used by the frontend evidence panel)."""
+async def get_schema() -> dict:
     try:
         inspector = await SchemaInspector.build(get_engine())
         tables = [
@@ -106,12 +89,8 @@ async def get_schema(db: AsyncSession = Depends(get_session)) -> dict:
                 "name": t.name,
                 "row_count": t.row_count,
                 "columns": [
-                    {
-                        "name": c.name,
-                        "type": c.type,
-                        "is_primary_key": c.is_primary_key,
-                        "foreign_key": c.foreign_key,
-                    }
+                    {"name": c.name, "type": c.type,
+                     "is_primary_key": c.is_primary_key, "foreign_key": c.foreign_key}
                     for c in t.columns
                 ],
             }

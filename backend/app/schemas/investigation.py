@@ -1,48 +1,85 @@
-"""Pydantic models for the investigation pipeline.
-
-These are the shared data contracts between every stage:
-  QuestionInterpretation  -- output of Stage 3 (question interpreter)
-  InvestigationPlan       -- output of Stage 4 (planner)  [placeholder]
-  QueryResult             -- output of Stage 5 (executor)  [placeholder]
-  InvestigationState      -- the full stateful object passed between agents
-"""
-
+"""Pydantic models shared across the investigation pipeline."""
 from __future__ import annotations
-
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Literal
-
 from pydantic import BaseModel, Field
 
-
 class TimePeriod(BaseModel):
-    label: str             # human-readable: "June 2026", "last month"
+    label: str
     start_date: date
     end_date: date
-
 
 class QuestionInterpretation(BaseModel):
     original_question: str
     question_type: Literal["root_cause", "trend", "comparison", "lookup"]
-    primary_metric_key: str              # must match a key in metrics.yaml
-    metric_label: str                    # human label from metrics.yaml
-    metric_definition: str               # the approved definition text
-    period: TimePeriod                   # the period being asked about
-    comparison_period: TimePeriod | None # the baseline to compare against
-    dimensions: list[str] = Field(       # which dimensions to investigate
-        description="e.g. ['region', 'segment', 'category']"
-    )
+    primary_metric_key: str
+    metric_label: str
+    metric_definition: str
+    period: TimePeriod
+    comparison_period: TimePeriod | None
+    dimensions: list[str] = Field(description="e.g. ['region', 'segment', 'category']")
     needs_root_cause_investigation: bool
-    interpretation_notes: str            # ambiguities / assumptions
+    interpretation_notes: str
     confidence: float = Field(ge=0.0, le=1.0)
 
-
 class InvestigationState(BaseModel):
-    """Stateful envelope passed between every agent in the pipeline."""
     session_id: str
     question: str
     interpretation: QuestionInterpretation | None = None
-    # Stages 4-7 will add: plan, relevant_tables, queries, results, insights
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
-    stage: str = "received"              # tracks where we are in the pipeline
+    stage: str = "received"
+
+class ValidationWarning(BaseModel):
+    code: str
+    message: str
+    severity: Literal["info", "warning", "error"] = "warning"
+
+class StepResult(BaseModel):
+    step_id: str
+    description: str
+    priority: int
+    status: str
+    sql: str | None = None
+    rows: list[dict] = Field(default_factory=list)
+    row_count: int = 0
+    execution_ms: int = 0
+    repair_attempts: int = 0
+    validation_warnings: list[ValidationWarning] = Field(default_factory=list)
+    error: str | None = None
+    tables_referenced: list[str] = Field(default_factory=list)
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status in ("succeeded", "repaired")
+
+class Finding(BaseModel):
+    title: str
+    finding_type: Literal["fact", "hypothesis", "data_quality", "warning"]
+    description: str
+    supporting_step_ids: list[str]
+    confidence: float = Field(ge=0.0, le=1.0)
+    magnitude: str | None = None
+
+class InsightReport(BaseModel):
+    summary: str
+    findings: list[Finding]
+    primary_cause: str
+    conclusion: str
+    data_quality_warnings: list[str]
+    unanswered_questions: list[str]
+    overall_confidence: float = Field(ge=0.0, le=1.0)
+    investigated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+class InvestigationResponse(BaseModel):
+    session_id: str
+    question: str
+    interpretation: QuestionInterpretation
+    step_results: list[StepResult]
+    insight: InsightReport | None = None
+    audit_summary: dict = Field(default_factory=dict)
+    total_ms: int = 0
+    steps_succeeded: int = 0
+    steps_failed: int = 0

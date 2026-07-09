@@ -75,7 +75,8 @@ class QueryRepairAgent:
     MAX_TOKENS = 2048
 
     def __init__(self, client: LLMClient | None = None) -> None:
-        self._client = client or AnthropicRepairClient()
+        from app.core.llm_factory import get_completion_client
+        self._client = client or get_completion_client()
         self._max_attempts = get_settings().query_max_repair_attempts
 
     def repair(

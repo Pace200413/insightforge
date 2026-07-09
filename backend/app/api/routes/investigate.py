@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.question_interpreter import QuestionInterpreter
-from app.core.database import get_session
+from app.core.database import get_engine, get_session
 from app.core.logging import get_logger
 from app.db.schema_inspector import SchemaInspector
 from app.schemas.investigation import InvestigationState, QuestionInterpretation
@@ -60,7 +60,7 @@ async def interpret_question(
 
     # Build schema summary for the LLM prompt
     try:
-        inspector = await SchemaInspector.build(db.bind)  # type: ignore[arg-type]
+        inspector = await SchemaInspector.build(get_engine())
         schema_summary = inspector.full_summary()
         schema_tables_used = len(inspector.tables)
     except Exception as exc:
@@ -100,7 +100,7 @@ async def interpret_question(
 async def get_schema(db: AsyncSession = Depends(get_session)) -> dict:
     """Return the full schema summary (used by the frontend evidence panel)."""
     try:
-        inspector = await SchemaInspector.build(db.bind)  # type: ignore[arg-type]
+        inspector = await SchemaInspector.build(get_engine())
         tables = [
             {
                 "name": t.name,

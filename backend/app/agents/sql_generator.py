@@ -108,7 +108,8 @@ class SQLGenerator:
     MAX_TOKENS = 2048
 
     def __init__(self, client: LLMClient | None = None) -> None:
-        self._client = client or AnthropicLLMClient()
+        from app.core.llm_factory import get_completion_client
+        self._client = client or get_completion_client()
 
     def generate(
         self,

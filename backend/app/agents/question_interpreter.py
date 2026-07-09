@@ -209,7 +209,8 @@ class QuestionInterpreter:
     MODEL = "claude-sonnet-4-6"
 
     def __init__(self, client: LLMClient | None = None) -> None:
-        self._client = client or AnthropicLLMClient()
+        from app.core.llm_factory import get_interpreter_client
+        self._client = client or get_interpreter_client()
         self._metrics = _load_metrics()
 
     def interpret(

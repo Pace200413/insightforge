@@ -71,7 +71,7 @@ class SchemaInspector:
             tables = {}
 
             for table_name in table_names:
-                pk_cols = {c["name"] for c in insp.get_pk_constraint(table_name).get("constrained_columns", [])}
+                pk_cols = set(insp.get_pk_constraint(table_name).get("constrained_columns", []))
                 fk_map: dict[str, str] = {}
                 for fk in insp.get_foreign_keys(table_name):
                     for local_col, ref_col in zip(

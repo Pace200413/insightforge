@@ -23,3 +23,7 @@ format:
 
 seed:
 	PYTHONPATH=backend .venv/bin/python scripts/generate_data.py
+
+
+eval:
+	PYTHONPATH=backend .venv/bin/python -m app.evaluation.runner

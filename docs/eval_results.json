@@ -1,0 +1,36 @@
+{
+  "summary": {
+    "cases": 1,
+    "passed": 0,
+    "pass_rate": 0.0,
+    "mean_overall": 0.362,
+    "mean_interpretation": 1.0,
+    "mean_primary_cause": 0.0,
+    "mean_evidence": 0.0,
+    "mean_safety": 0.75,
+    "total_steps_succeeded": 7,
+    "total_steps_failed": 1,
+    "mean_latency_ms": 18301
+  },
+  "cases": [
+    {
+      "case_id": "revenue_drop_root_cause",
+      "question": "Why did revenue drop last month?",
+      "overall_score": 0.362,
+      "passed": false,
+      "scores": {
+        "interpretation": 1.0,
+        "primary_cause": 0.0,
+        "evidence": 0.0,
+        "safety": 0.75,
+        "completion": 0.5
+      },
+      "matched_primary": [],
+      "matched_secondary": [],
+      "steps_succeeded": 7,
+      "steps_failed": 1,
+      "queries_blocked": 1,
+      "total_ms": 18301
+    }
+  ]
+}

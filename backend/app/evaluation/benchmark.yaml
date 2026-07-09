@@ -1,0 +1,27 @@
+benchmark:
+- id: revenue_drop_root_cause
+  question: Why did revenue drop last month?
+  reference_date: '2026-07-01'
+  expected_question_type: root_cause
+  expected_metric: net_revenue
+  expected_primary_keywords:
+  - enterprise
+  expected_secondary_keywords:
+  - emea
+  - region
+  - refund
+  - electronics
+  min_secondary_hits: 1
+  notes: 'Ground truth: enterprise volume collapse is primary; EMEA + electronics
+    refunds secondary.'
+- id: revenue_lookup
+  question: What was our net revenue in May 2026?
+  reference_date: '2026-07-01'
+  expected_question_type: lookup
+  expected_metric: net_revenue
+  expected_primary_keywords: []
+  expected_secondary_keywords:
+  - may
+  - revenue
+  min_secondary_hits: 1
+  notes: Simple lookup -- tests that non-root-cause questions also work.

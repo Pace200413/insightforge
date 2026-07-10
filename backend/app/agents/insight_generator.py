@@ -59,7 +59,7 @@ Your job is to synthesise them into a structured JSON insight report.
 6. State what the database CANNOT prove (e.g. WHY enterprise customers left).
 
 ## OUTPUT FORMAT
-Return ONLY valid JSON matching this exact structure. No markdown, no explanation:
+Return ONLY valid JSON matching this exact structure. Start your response with { and end with }. No markdown fences, no prose before or after:
 {
   "summary": "<1-2 sentence TL;DR with the main finding and key number>",
   "primary_cause": "<the single most important cause in one sentence>",
@@ -150,7 +150,10 @@ class InsightGenerator:
         for block in response.content:
             if hasattr(block, "text"):
                 raw += block.text
-        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        # Extract the JSON object even if the model wrapped it in prose/fences
+        import re
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        raw = m.group(0) if m else raw.strip()
 
         try:
             data = json.loads(raw)

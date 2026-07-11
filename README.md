@@ -105,3 +105,10 @@ The project runs on a free LLM tier, which sets some real boundaries:
 ---
 
 Islam Mamedov — [GitHub](https://github.com/islam-mamedov) · [Hugging Face](https://huggingface.co/islam-mamedov)
+
+## License
+
+This project is released under the [MIT License](LICENSE).
+
+```text
+Copyright (c) 2026 Islam Mamedov
